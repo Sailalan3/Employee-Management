@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-900 text-slate-200 font-sans antialiased;
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgba(139, 92, 246, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(236, 72, 153, 0.12), transparent 60%),
+    linear-gradient(180deg, #06060d 0%, #0b0b14 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+@layer components {
+  .glass {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-card;
+  }
+  .glass-strong {
+    @apply rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-2xl shadow-glow;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium
+           transition focus:outline-none focus:ring-2 focus:ring-neon-violet/60 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn text-white bg-grad-neon shadow-glow;
+  }
+  .btn-ghost {
+    @apply btn text-slate-200 border border-white/10 bg-white/5 hover:bg-white/10;
+  }
+  .btn-danger {
+    @apply btn text-white bg-red-500/80 hover:bg-red-500;
+  }
+
+  .input {
+    @apply w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm
+           placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-neon-violet/50 focus:border-transparent;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-xs font-medium text-slate-200;
+  }
+
+  .kpi-value {
+    @apply text-3xl font-semibold tracking-tight text-white;
+  }
+  .kpi-label {
+    @apply text-xs uppercase tracking-wider text-slate-400;
+  }
+
+  .table-row {
+    @apply border-b border-white/5 hover:bg-white/[0.03] transition;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-400 transition
+           hover:text-white hover:bg-white/5;
+  }
+  .sidebar-link-active {
+    @apply text-white bg-white/10 shadow-glow-sm;
+  }
+
+  .tab {
+    @apply relative px-4 py-1.5 text-sm text-slate-400 rounded-full transition;
+  }
+  .tab-active {
+    @apply text-white bg-white/10 shadow-glow-sm;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
