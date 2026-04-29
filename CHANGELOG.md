@@ -1,193 +1,192 @@
-# Changelog — Current Session
+# Changelog
 
-A flat record of every file touched in this development session, grouped by action. Use this alongside `README.md` (which has a per-file status table) and `COMMANDS.md` (runnable reference).
-
----
-
-## Summary
-
-| Action      | Count |
-|-------------|-------|
-| **Added**   | 46    |
-| **Edited**  | 9     |
-| **Deleted** | 1     |
-
-Baseline before this session: a backend with wallet-signature auth, a single Employee/User model, and a contract deployed on Ganache. No frontend existed. No email/password login. No attendance/tasks/projects/payroll/leaves/reviews/analytics modules.
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## Pre-existing (kept as-is)
+## [Unreleased] — `main` branch
 
-These files existed before the session and were **not modified**:
+Active development continuing past v1.0. Adds MetaMask in the loop for every
+privileged write, splits role-aware pages into HR / Employee variants, and
+hardens both backend and frontend against common chain failure modes.
 
-### Blockchain
-- `blockchain/contracts/EmployeeRegistry.sol`
-- `blockchain/migrations/*`
-- `blockchain/truffle-config.js`
-- `blockchain/test/*`
+### Added
+- **Frontend MetaMask integration**
+  - `frontend/src/blockchain/contract.js` — full ABI, `keccakName()`,
+    `parseEmployeeCreatedId()`, `describeChainError()` for user-friendly
+    translation of `ACTION_REJECTED`, `OwnableUnauthorizedAccount`,
+    `EmployeeNotFound`, etc.
+  - `frontend/src/context/WalletContext.jsx` — exposes
+    `hasMetaMask`, `account`, `chainId`, `onRightChain`, `ownerAddress`,
+    `isOwner`, `connect`, `ensureChain`, `getWriteContract`. Handles
+    `wallet_switchEthereumChain` with `4902` fallback to
+    `wallet_addEthereumChain`.
+  - HR-only **Connect Wallet** button in the Navbar with a colour-coded
+    status dot (green = owner, amber = wrong chain, red = not owner).
+  - MetaMask signing required on Employee create / update / deactivate.
+  - Preflight wallet readiness check before opening the MetaMask popup.
+  - Random wallet generation client-side as a deployer fallback when
+    HR doesn't supply a 0x… address.
+- **Backend mirror endpoints with on-chain receipt verification**
+  - `GET  /employees/owner` — returns the contract owner address.
+  - `POST /employees/mirror` — verifies tx receipt, parses
+    `EmployeeCreated` event from `log.address === CONTRACT_ADDRESS`,
+    asserts `Number(parsed.args.employeeId) === payload.employeeId`,
+    only then writes Mongo.
+  - `PUT  /employees/mirror/:id` — same flow for `EmployeeUpdated`.
+  - `DELETE /employees/mirror/:id` — same flow for `EmployeeDeleted`,
+    with stale-Mongo-row fallback.
+- **Role-aware page splits**
+  - `Leaves.jsx` → `HRLeaves` (pending / approved / rejected / all
+    tabs, no Request button) + `EmployeeLeaves` (request + cancel only,
+    no Approve / Reject).
+  - `Attendance.jsx` → HR team-view (date picker, KPIs, joined roster
+    with `Not clocked in` rows for absent employees) + Employee
+    personal-view (clock in/out + breaks).
+- **UX polish**
+  - Notification bell with unread badge persisted in localStorage.
+  - AI Insights widget — heuristic, deterministic, no external LLM.
+  - Glassmorphism design system across cards and modals.
+  - Animated metric tiles on the dashboard.
+  - `ProgressModal` wired into employee writes for tx-pending feedback.
+- **Tooling**
+  - Smoke test for `/health` endpoint.
+  - 3-minute demo script + voice-over notes (in `COMMANDS.md`).
 
-### Backend
-- `backend/package.json`, `backend/package-lock.json`
-- `backend/config/db.js`
-- `backend/models/BlockchainLog.js`
-- `backend/controllers/employeeController.js`
-- `backend/routes/employeeRoutes.js`
-- `backend/listeners/employeeEvents.js`
+### Changed
+- **Role gates** (defence in depth — backend AND frontend)
+  - `requireRole("hr")` on `/leaves/:id/approve` and `/leaves/:id/reject`.
+  - `requireRole("employee")` on `POST /leaves` (HR adjudicates,
+    doesn't request).
+  - `requireRole("hr")` on team-wide `/attendance`.
+  - `requireRole("hr")` on all `/employees/mirror/*` endpoints.
+  - Frontend hides Approve / Reject buttons from non-HR users and the
+    "Request leave" button from HR.
+- **Friendly error translation**
+  - Backend `friendlyMessage()` middleware translates ethers errors
+    (`TIMEOUT`, `NETWORK_ERROR`, `EmployeeNotFound`, `EmployeeInactive`,
+    `OwnableUnauthorizedAccount`, `insufficient funds`) into messages
+    the frontend can show as a toast.
+- **Contract-address pinning**
+  - Backend honours `CONTRACT_ADDRESS` env override, stopping the
+    silent drift between `truffle migrate --reset` runs.
+- **Chain ID correction**
+  - `VITE_CHAIN_ID` set to `1337` (EIP-155) to match what MetaMask sees.
+    Ganache's `net_version` is still `5777` for Truffle's artifact key,
+    but the browser always uses `1337`.
+- **Route ordering**
+  - `GET /employees/owner` declared before `GET /employees/:id` so it
+    isn't shadowed by the wildcard.
 
----
+### Fixed
+- MetaMask user rejection (`4001` / `ACTION_REJECTED`) no longer crashes
+  the page — toast + return to form.
+- Wrong-chain detection auto-switches via `wallet_switchEthereumChain`,
+  with `4902` fallback to `wallet_addEthereumChain`.
+- Stale Mongo rows from a prior Ganache deployment now soft-delete with a
+  warning instead of throwing a raw `EmployeeNotFound` revert.
+- Ethers HTTP timeout raised to 60 s (configurable via `RPC_TIMEOUT_MS`)
+  to handle large document payloads on slow Ganache instances.
+- `transaction underpriced` and `already known` errors trigger
+  `NonceManager.reset()` and a single retry.
+- MongoDB transient disconnect handled with auto-reconnect; backend
+  exits cleanly if the initial connect fails.
 
-## Edited
+### Refactored
+- `sendTx()` helper extracted in `config/blockchain.js` to centralise
+  the nonce-desync retry logic.
+- All endpoint definitions centralised in `frontend/src/services/api.js`.
+- Friendly-message helper extracted into reusable middleware.
 
-Files that existed before the session but were substantially rewritten.
+### Style
+- Backend and frontend formatted with consistent quoting and indent.
 
-### Backend
-
-| File                                | What changed                                                                 |
-|-------------------------------------|------------------------------------------------------------------------------|
-| `backend/server.js`                 | Registers 8 new route groups; calls `seedHrUser()` and `wallet.reset()` on startup; centralised ethers error → friendly message translator. |
-| `backend/config/blockchain.js`      | Wrapped RPC in `FetchRequest` with configurable 60s timeout; broadened `sendTx` retry detector to cover `underpriced` / `already known` / `replacement` errors. |
-| `backend/middleware/auth.js`        | Rewritten for JWT payload `{ userId, email, role, employeeId }`; added `requireRole(...roles)` helper. |
-| `backend/models/User.js`            | Replaced nonce/signature fields with `passwordHash`, `role` enum (`hr` / `employee`), `employeeId`, `mustChangePassword`. Legacy `walletAddress` kept optional for back-compat. |
-| `backend/models/Employee.js`        | Added `personal` subdoc, `education[]`, `documents[]` (base64 data URLs), `joinDate`, `salary`. |
-| `backend/services/authService.js`   | Rewritten for email/password flow: `loginWithPassword`, `changePassword` (skips current-pw check when `mustChangePassword`), `createEmployeeLogin`, `getUserById`, `sanitize`. |
-| `backend/services/employeeService.js` | `createEmployee` now accepts `joinDate`, `salary`, `personal`, `education[]`, `documents[]`, `loginPassword` and optionally provisions a User via `createEmployeeLogin`. Auto-generates a random `walletAddress` when HR doesn't supply one. `deactivateEmployee` falls back to Mongo-only cleanup with a `warning` field when the chain row is missing / already inactive. |
-| `backend/controllers/authController.js` | Replaced nonce/login handlers with `login`, `changePassword`, `me`.       |
-| `backend/routes/authRoutes.js`      | Replaced nonce/login routes with `/login`, `/change-password`, `/me`.        |
-
-### Root
-
-| File        | What changed                                                          |
-|-------------|-----------------------------------------------------------------------|
-| `README.md` | Rewritten to describe the full stack, auth pivot, and file statuses. |
-
----
-
-## Added
-
-New files created in this session.
-
-### Backend — infrastructure
-
-- `backend/config/seed.js` — seeds the HR account on startup; drops the legacy unique `walletAddress` index if present.
-
-### Backend — models (6 new)
-
-- `backend/models/Attendance.js`
-- `backend/models/Project.js`
-- `backend/models/Task.js`
-- `backend/models/Payroll.js`
-- `backend/models/Leave.js`
-- `backend/models/Review.js`
-
-### Backend — services (1 new)
-
-- `backend/services/identityService.js` — resolves the caller to an Employee record via JWT `employeeId` (wallet fallback for legacy tokens).
-
-### Backend — controllers (8 new)
-
-- `backend/controllers/attendanceController.js`
-- `backend/controllers/projectController.js`
-- `backend/controllers/taskController.js`
-- `backend/controllers/payrollController.js`
-- `backend/controllers/leaveController.js`
-- `backend/controllers/reviewController.js`
-- `backend/controllers/analyticsController.js`
-- `backend/controllers/logController.js`
-
-### Backend — routes (8 new)
-
-- `backend/routes/attendanceRoutes.js`
-- `backend/routes/projectRoutes.js`
-- `backend/routes/taskRoutes.js`
-- `backend/routes/payrollRoutes.js`
-- `backend/routes/leaveRoutes.js`
-- `backend/routes/reviewRoutes.js`
-- `backend/routes/analyticsRoutes.js`
-- `backend/routes/logRoutes.js`
-
-### Frontend — full app scaffold (new)
-
-- `frontend/index.html`
-- `frontend/package.json`, `frontend/package-lock.json`
-- `frontend/vite.config.js`, `frontend/tailwind.config.js`, `frontend/postcss.config.js`, `frontend/eslint.config.js`
-- `frontend/src/main.jsx`
-- `frontend/src/App.jsx`
-- `frontend/src/index.css`
-
-### Frontend — context
-
-- `frontend/src/context/AuthContext.jsx` — email/password login, JWT decoding, role exposure.
-
-### Frontend — components
-
-- `frontend/src/components/Layout.jsx`
-- `frontend/src/components/Sidebar.jsx`
-- `frontend/src/components/Navbar.jsx`
-- `frontend/src/components/ProtectedRoute.jsx`
-- `frontend/src/components/Avatar.jsx`
-- `frontend/src/components/PageHeader.jsx`
-- `frontend/src/components/ProgressModal.jsx`
-- `frontend/src/components/EmptyState.jsx`
-- `frontend/src/components/StatusBadge.jsx`
-- `frontend/src/components/Toaster.jsx`
-
-### Frontend — pages (10 new)
-
-- `frontend/src/pages/Login.jsx`
-- `frontend/src/pages/Dashboard.jsx`
-- `frontend/src/pages/Employees.jsx`
-- `frontend/src/pages/EmployeeDetail.jsx`
-- `frontend/src/pages/Attendance.jsx`
-- `frontend/src/pages/Tasks.jsx`
-- `frontend/src/pages/Payroll.jsx`
-- `frontend/src/pages/Leaves.jsx`
-- `frontend/src/pages/Reviews.jsx`
-- `frontend/src/pages/BlockchainActivity.jsx`
-- `frontend/src/pages/Settings.jsx`
-
-### Frontend — services / utils / blockchain helpers
-
-- `frontend/src/services/api.js`
-- `frontend/src/blockchain/contract.js`
-- `frontend/src/utils/format.js`
-- `frontend/src/utils/toast.js`
-
-### Root
-
-- `COMMANDS.md` — runnable command reference.
-- `CHANGELOG.md` — this file.
+### Docs
+- README v2 with badges, MetaMask integration section, full REST table,
+  role matrix, branches & releases, and troubleshooting.
+- COMMANDS.md expanded with MetaMask setup, GitHub workflow, and a
+  3-minute demo voice-over guide.
 
 ---
 
-## Deleted
+## [1.0.0] — 2026-04-14 · `master` branch / `v1.0.0` tag
 
-| File                                     | Why |
-|------------------------------------------|-----|
-| `frontend/src/context/ThemeContext.jsx`  | Theme toggle was wired to a non-existent light-mode CSS (no `dark:` variants were authored). User reported "black and white page is not working." Removed the provider, the toggle button in Navbar, and the Settings theme row. |
+First stable release.
+
+### Added
+- **Smart contract** — `EmployeeRegistry.sol` (Solidity 0.8.20, Ownable,
+  custom errors, `EmployeeCreated`, `EmployeeUpdated`, `EmployeeDeleted`
+  events). Deployment migration. Mocha + Chai test suite.
+- **Backend** — Express + Mongoose + Ethers v6:
+  - JWT auth (`bcrypt` password hashing, `requireRole(...)` middleware).
+  - Models: Employee, User, Attendance, Leave, Task, Project, Payroll,
+    Review, BlockchainLog.
+  - Controllers + routes for all resources.
+  - HR seeding script — first-run admin account.
+  - Event listener subscribing to `EmployeeCreated/Updated/Deleted`,
+    upserting into `blockchainLogs` (idempotent via unique
+    `(txHash, logIndex)` index).
+  - Friendly error middleware translating ethers errors into UI strings.
+- **Frontend** — React 19 + Vite + Tailwind:
+  - Auth flow (Login, Change Password, mustChangePassword on first login).
+  - Dashboard with KPI tiles, AI Insights widget, recent on-chain activity.
+  - Employees page with multi-step Create wizard (Core → Personal →
+    Education → Documents).
+  - Attendance, Leaves, Tasks, Projects (in Tasks), Payroll, Reviews,
+    Settings, Blockchain Activity pages.
+  - Reusable components: Layout, Navbar, Sidebar, ProtectedRoute, Avatar,
+    StatusBadge, EmptyState, PageHeader, ProgressModal, Toaster.
+  - axios client with JWT interceptor and typed endpoint helpers.
+- **Documentation** — README with architecture diagram, COMMANDS reference,
+  initial CHANGELOG.
+
+### Removed
+- Legacy SQLite prototype (`database.sqlite`, `index.js`, baseline
+  `lib/`, `models/`, root `package.json`) — replaced by the new stack.
 
 ---
 
-## Notable behavioural changes (not file-level)
+## [0.0.1] — 2025-02-14 · baseline
 
-These affect runtime behaviour but don't change any single file on their own — worth calling out:
+Initial fork from
+[hrishikesh1997/Employee-Management](https://github.com/hrishikesh1997/Employee-Management).
 
-1. **Auth model pivoted from MetaMask signature → email + password.** Old `/auth/nonce` + signature login is gone. JWTs now carry `{ userId, email, role, employeeId }` instead of `{ walletAddress }`.
-2. **HR is seeded on every backend start** (`bsailalan@gmail.com` / `Sailalan@2003`). If the user already exists, only the `role` is corrected to `hr`.
-3. **Legacy `walletAddress_1` unique index** on the `users` collection is auto-dropped on startup — old deployments that had it would otherwise fail new employee-login provisioning with E11000.
-4. **Wallet auto-generation.** HR never types 0x… addresses; the backend calls `ethers.Wallet.createRandom().address` when none is supplied.
-5. **Graceful deactivate.** If the on-chain call reverts because the employee doesn't exist or is already inactive, the backend reads the chain state to confirm and falls back to a Mongo-only soft-delete. The response includes `warning: "…"`, which the UI surfaces as a toast.
-6. **Nonce-safe restart.** `wallet.reset()` runs at startup. `sendTx` retries once on `underpriced` / `already known` in addition to plain `nonce` errors.
-7. **Friendly error envelope.** The express error handler translates common ethers failure shapes to human-readable messages (`TIMEOUT`, `NETWORK_ERROR`, `EmployeeNotFound`, `EmployeeInactive`, `OwnableUnauthorizedAccount`, `insufficient funds`).
-8. **Role-scoped frontend routing.** `/employees`, `/employees/:id`, `/payroll`, `/blockchain` are HR-only. Employees hitting those URLs redirect home. Sidebar hides those links entirely for employees.
-9. **Notification bell is real.** Polls `/analytics/recent-activity` every 30s, stores a `lastSeen` timestamp in `localStorage`, shows an unread badge, and renders a dropdown of the last 8 on-chain events.
-10. **AI Insights widget.** A heuristic, deterministic summary on the Dashboard (no external LLM call). Reads summary + chart data and emits up to 5 short bullets.
+### Pre-existing
+- README placeholder.
+- SQLite-based Node prototype (later removed in 1.0.0).
 
 ---
 
-## Default credentials (set in this session)
+## Branch Map
 
-| Role | Email                 | Password        |
-|------|-----------------------|-----------------|
-| HR   | `bsailalan@gmail.com` | `Sailalan@2003` |
+```
+v1.0.0 tag (release)
+   │
+   ▼
+master ──●──●──●──●── ... ──●  (45 commits, baseline → v1.0.0)
+                            │
+                            └─ branched into ─┐
+                                              ▼
+                              main ──●──●── ... ──●  (100 commits, v1.0.0 + ongoing)
+```
 
-Override via `HR_SEED_EMAIL` / `HR_SEED_PASSWORD` env vars.
+- **master** — release line. Stable cuts; tagged.
+- **main** — active development. Default branch on GitHub.
+- New work lands on `main`. Release-worthy points are merged or
+  cherry-picked into `master` and tagged.
+
+---
+
+## Versioning policy
+
+- **MAJOR** — incompatible API changes (e.g. JWT payload shape change,
+  contract ABI break).
+- **MINOR** — backward-compatible feature additions (e.g. a new endpoint,
+  a new page).
+- **PATCH** — backward-compatible bug fixes and polish.
+
+Unreleased changes accumulate under `[Unreleased]`. When cutting a
+release, that section becomes the next version heading and a fresh
+`[Unreleased]` is opened above it.
